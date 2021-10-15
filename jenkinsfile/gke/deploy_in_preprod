@@ -1,0 +1,97 @@
+pipeline {
+    agent { node { label 'preprod'} }
+    triggers {
+        pollSCM('H/2 * * * *')
+    }
+    stages {
+        stage('Linting code') {
+            steps {
+                echo 'Здесь должен быть lint, но его не завезли'
+            }
+            post {
+                failure {
+                    slackSend color: 'danger', message: "<${BUILD_URL}|#${JOB_NAME}-${BUILD_NUMBER}>: Linting code *failed*!"
+                }
+            }
+        }
+        stage('Build image') {
+            steps {
+                sh '''
+                cd app
+                hash=$(git describe --always)
+                sed -i -- "s/Version/Version $hash/g" index.html
+                sudo docker build . -t gritskov/test-web:$hash
+                '''
+            }
+            post {
+                failure {
+                    slackSend color: 'danger', message: "<${BUILD_URL}|#${JOB_NAME}-${BUILD_NUMBER}>: Build image *failed*!"
+                }
+            }
+        }
+        stage('Testing the container') {
+            steps {
+                sh '''
+                hash=$(git describe --always)
+                docker run -d -p 1337:80 --rm --name web-app-test gritskov/test-web:$hash
+                sleep 5
+                ./scripts/container_test.sh
+                '''
+            }
+            post {
+                always {
+                    sh '''
+                    docker stop web-app-test
+                    '''
+                }
+                failure {
+                    slackSend color: 'danger', message: "<${BUILD_URL}|#${JOB_NAME}-${BUILD_NUMBER}>: Testing the container *failed*!"
+                }
+            }
+        }
+        stage('Push image to DockerHub') {
+            steps {
+                sh '''
+                hash=$(git describe --always)
+                docker push gritskov/test-web:$hash
+                '''
+            }
+            post {
+                failure {
+                    slackSend color: 'danger', message: "<${BUILD_URL}|#${JOB_NAME}-${BUILD_NUMBER}>: Push image to DockerHub *failed*!"
+                }                
+            }
+        }
+        stage('Deploy app') {
+            steps {
+                sh '''
+                kubectl apply -f chart/namespace.yaml
+                hash=$(git describe --always)
+                helm upgrade --install --namespace=app app chart/app --set container1.tag=$hash
+                '''
+            }
+            post {
+                failure {
+                    slackSend color: 'danger', message: "<${BUILD_URL}|#${JOB_NAME}-${BUILD_NUMBER}>: Deploy app *failed*!"
+                }
+            }
+        }
+        stage('Testing app') {
+            steps {
+                sh '''
+                sleep 5
+                ./scripts/preprod_test.sh
+                '''
+            }
+            post {
+                success {
+                    slackSend color: 'good', message: "<${BUILD_URL}|#${JOB_NAME}-${BUILD_NUMBER}>: Testing app *successful*!"
+                    build job: 'deploy_in_prod_gke'
+                }
+                failure {
+                    slackSend color: 'danger', message: "<${BUILD_URL}|#${JOB_NAME}-${BUILD_NUMBER}>: Testing app *failed*!"
+                }
+            }
+        }
+    }
+}

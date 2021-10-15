@@ -1,0 +1,7 @@
+container1:
+  image: gritskov/test-web
+  tag: latest
+  containerPort: 80
+  port: 1337
+
+replicaCount: 3

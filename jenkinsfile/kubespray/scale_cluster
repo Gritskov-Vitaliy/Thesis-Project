@@ -1,0 +1,63 @@
+pipeline {
+    agent { node { label 'prod'} }
+    /*triggers {
+        pollSCM('H/5 * * * *')
+    }*/
+    stages {
+        stage('Init and plan terraform') {
+            steps {
+                sh '''
+                cd terraform
+                terraform init    
+                terraform plan -var-file tfvars.json
+                '''
+                slackSend color: 'warning', message: "<${BUILD_URL}|#${JOB_NAME}-${BUILD_NUMBER}>: Need your approved!" 
+                script {
+                    timeout(time: 10, unit: 'MINUTES') {
+                        input(id: "Update infrastructure", message: "Update infrastructure?", ok: 'Update')
+                    }
+                }
+            }
+            post {
+                failure {
+                    slackSend color: 'danger', message: "<${BUILD_URL}|#${JOB_NAME}-${BUILD_NUMBER}>: Init and plan terraform *failed*!"
+                }
+                aborted {
+                    slackSend color: 'danger', message: "<${BUILD_URL}|#${JOB_NAME}-${BUILD_NUMBER}>: Update infrastructure (GCP) *aborted*!"            
+                }
+            }
+        }
+        stage('Apply terraform') {
+            steps {
+                sh '''
+                cd terraform
+                terraform apply -var-file tfvars.json -auto-approve
+                '''
+            }
+        }
+        stage('Install kubespray') {
+            steps {
+                sh '''
+                cd terraform
+                gsutil cat gs://my_tfstate_bucket/thesis/terraform/state/default.tfstate > state
+                ./generate-inventory.sh state > inventory.ini
+                '''
+                sh '''
+                cp terraform/inventory.ini kubespray/inventory.ini
+                cd kubespray
+                ansible-playbook -i inventory.ini scale.yml -b -v
+                '''
+            }
+            post {
+                failure {
+                    slackSend color: 'danger', message: "<${BUILD_URL}|#${JOB_NAME}-${BUILD_NUMBER}>: Error in *ansible playbook*!"
+                }               
+            }
+        }
+    }
+    post {
+        success {
+            slackSend color: 'good', message: "<${BUILD_URL}|#${JOB_NAME}-${BUILD_NUMBER}>: Scale cluster *successful*!"            
+        }
+    }
+}

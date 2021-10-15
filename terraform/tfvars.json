@@ -1,0 +1,72 @@
+{
+  "gcp_project_id": "reliable-vector-326520",
+  "region": "europe-west1",
+  "ssh_pub_key": "~/.ssh/id_rsa.pub",
+
+  "keyfile_location": "~/gcloud.json",
+
+  "prefix": "thesis-project",
+
+  "ssh_whitelist": [
+    "0.0.0.0/0"
+  ],
+  "api_server_whitelist": [
+    "0.0.0.0/0"
+  ],
+  "nodeport_whitelist": [
+    "0.0.0.0/0"
+  ],
+
+  "machines": {
+    "master-0": {
+      "node_type": "master",
+      "size": "e2-small",
+      "zone": "europe-west1-b",
+      "additional_disks": {},
+      "boot_disk": {
+        "image_name": "ubuntu-os-cloud/ubuntu-2004-focal-v20210908",
+        "size": 20
+      }
+    },
+    "worker-0": {
+      "node_type": "worker",
+      "size": "e2-small",
+      "zone": "europe-west1-b",
+      "additional_disks": {},
+      "boot_disk": {
+        "image_name": "ubuntu-os-cloud/ubuntu-2004-focal-v20210908",
+        "size": 20
+      }
+    },
+    "worker-1": {
+      "node_type": "worker",
+      "size": "e2-small",
+      "zone": "europe-west1-b",
+      "additional_disks": {},
+      "boot_disk": {
+        "image_name": "ubuntu-os-cloud/ubuntu-2004-focal-v20210908",
+        "size": 20
+      }
+    },
+    "worker-2": {
+      "node_type": "worker",
+      "size": "e2-small",
+      "zone": "europe-west1-b",
+      "additional_disks": {},
+      "boot_disk": {
+        "image_name": "ubuntu-os-cloud/ubuntu-2004-focal-v20210908",
+        "size": 20
+      }
+    },
+    "master-1": {
+      "node_type": "master",
+      "size": "e2-small",
+      "zone": "europe-west1-b",
+      "additional_disks": {},
+      "boot_disk": {
+        "image_name": "ubuntu-os-cloud/ubuntu-2004-focal-v20210908",
+        "size": 20
+      }
+    }
+  }
+}

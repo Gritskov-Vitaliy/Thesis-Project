@@ -1,0 +1,48 @@
+pipeline {
+    agent { node { label 'prod'} }
+    stages {
+        stage('Check infrastructure') {
+            steps {
+                script {
+                    try {
+                        sh '''
+                        kubectl get nodes
+                        '''
+                    } catch (err) {
+                        build job: 'create_infrastructure_kubespray'
+                    }
+                }
+            }
+        }
+        stage('Deploy app') {
+            steps {
+                sh '''
+                kubectl apply -f chart/namespace.yaml
+                hash=$(git describe --always)
+                helm upgrade --install --namespace=app app chart/app --set container1.tag=$hash
+                '''
+                }
+            post {
+                failure {
+                    slackSend color: 'danger', message: "<${BUILD_URL}|#${JOB_NAME}-${BUILD_NUMBER}>: App *not deployed in GCP*!"
+                }               
+            }
+        }
+        stage('Test') {
+            steps {
+                sh '''
+                sleep 5
+                sh './scripts/prod_test_kubespray.sh
+                '''
+            }
+        }
+    }
+    post {
+        failure {
+            slackSend color: 'danger', message: "<${BUILD_URL}|#${JOB_NAME}-${BUILD_NUMBER}>: Deploy app in GCP *failed*! Commit: <https://github.com/Gritskov-Vitaliy/Thesis-Project/commit/${GIT_COMMIT}|${GIT_COMMIT}>"    
+        }
+        success {
+            slackSend color: 'good', message: "<${BUILD_URL}|#${JOB_NAME}-${BUILD_NUMBER}>: Deploy app in GCP *successful*! Commit: <https://github.com/Gritskov-Vitaliy/Thesis-Project/commit/${GIT_COMMIT}|${GIT_COMMIT}>"            
+        }
+    }
+}

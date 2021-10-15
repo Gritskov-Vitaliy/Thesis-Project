@@ -1,0 +1,89 @@
+pipeline {
+    
+    agent { node { label 'prod'} }
+    stages {
+        stage('Init and plan terraform') {
+            steps {
+                sh '''
+                cd terraform
+                terraform init    
+                terraform plan -var-file tfvars.json
+                '''
+                slackSend color: 'warning', message: "<${BUILD_URL}|#${JOB_NAME}-${BUILD_NUMBER}>: Need your approved!" 
+                script {
+                    timeout(time: 10, unit: 'MINUTES') {
+                        input(id: "Create infrastructure", message: "Create infrastructure?", ok: 'Create')
+                    }
+                }
+            }
+            post {
+                failure {
+                    slackSend color: 'danger', message: "<${BUILD_URL}|#${JOB_NAME}-${BUILD_NUMBER}>: Init and plan terraform *failed*!"
+                }
+                aborted {
+                    slackSend color: 'danger', message: "<${BUILD_URL}|#${JOB_NAME}-${BUILD_NUMBER}>: Infrastructure (GCP) *aborted*!"            
+                }
+            }
+        }
+        stage('Apply terraform') {
+            steps {
+                sh '''
+                cd terraform
+                terraform apply -var-file tfvars.json -auto-approve
+                '''
+            }
+            post {
+                failure {
+                    slackSend color: 'danger', message: "<${BUILD_URL}|#${JOB_NAME}-${BUILD_NUMBER}>: Infrastructure (GCP) *not created*!"
+                    sh '''
+                    cd terraform
+                    terraform delete -var-file tfvars.json 
+                    '''   
+                }
+            }
+        }
+        stage('Install kubespray') {
+            steps {
+                sh '''
+                cd terraform
+                gsutil cat gs://my_tfstate_bucket/thesis/terraform/state/default.tfstate > state
+                ./generate-inventory.sh state > inventory.ini
+                '''
+                sh '''
+                cp terraform/inventory.ini kubespray/inventory.ini
+                cd kubespray
+                ansible-playbook -i inventory.ini cluster.yml -b -v
+                '''
+            }
+            post {
+                failure {
+                    slackSend color: 'danger', message: "<${BUILD_URL}|#${JOB_NAME}-${BUILD_NUMBER}>: Error in *ansible playbook*!"
+                }               
+            }
+        }
+        stage('Configuring k8s') {
+            steps {
+                sh '''
+                ./scripts/get_config.sh
+                '''
+            }
+            post {
+                failure {
+                    slackSend color: 'danger', message: "<${BUILD_URL}|#${JOB_NAME}-${BUILD_NUMBER}>: Erron in *configuration kubernetes*!"
+                }               
+            }
+        }
+        stage('Test kubernetes config') {
+            steps {
+                sh '''
+                kubectl get nodes
+                '''
+            }
+            post {
+                failure {
+                    slackSend color: 'danger', message: "<${BUILD_URL}|#${JOB_NAME}-${BUILD_NUMBER}>: Kubernetes *not configured*!"
+                }               
+            }
+        }
+    }
+}
